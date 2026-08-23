@@ -5,7 +5,6 @@
 CoreCode is an AI-powered Java/Spring Boot application that combines **company policies**, **source code**, and **Git history** into a single AI assistant.
 
 It answers developer questions using retrieved project evidence and provides source-cited responses instead of relying on unsupported assumptions.
----
 
 ## 1. Problem Statement
 
