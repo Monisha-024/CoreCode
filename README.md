@@ -82,8 +82,6 @@ building, Gemini communication, and source tracking.
 | PDF            | Apache PDFBox                                  |
 | Testing        | JUnit 5, Spring Boot Test, Mockito             |
 
-No React, Firebase, MongoDB, microservices, vector databases, or ML
-training — intentionally, to keep the project scoped and explainable.
 
 ## 6. Database Schema
 
@@ -218,16 +216,9 @@ Covers: `QuestionClassifierServiceTest`, `PolicyComparisonServiceTest`,
 `PolicyVersionServiceTest` (activation/archiving rules, duplicate-name
 rejection).
 
-## 10. Sample Login Accounts
 
-| Role      | Email                       | Password    |
-|-----------|------------------------------|-------------|
-| Admin     | admin@devassistant.com       | Admin@123   |
-| Developer | developer@devassistant.com   | Dev@12345   |
 
-Seeded automatically — no manual setup required.
-
-## 11. Sample Demo Questions
+## 10. Sample Demo Questions
 
 **Policy**
 - "What is the current password requirement?"
@@ -251,7 +242,7 @@ Seeded automatically — no manual setup required.
 - "Can I modify this authentication function according to the current
   security policy?"
 
-## 12. Architecture & CS Concepts Demonstrated
+## 11. Architecture & CS Concepts Demonstrated
 
 - **Layered architecture**: controller → service → repository, with DTOs
   isolating the API contract from JPA entities
@@ -274,10 +265,10 @@ Seeded automatically — no manual setup required.
 - **Testing**: JUnit 5 + Mockito unit tests around the business-critical
   rules (versioning invariants, classification, retrieval ranking)
 
-## 13. Project Structure
+## 12. Project Structure
 
 ```
-developer-knowledge-assistant/
+CoreCode/
 ├── backend/
 │   ├── src/main/java/com/example/devassistant/
 │   │   ├── controller/   REST endpoints
@@ -307,10 +298,9 @@ developer-knowledge-assistant/
 └── README.md
 ```
 
-## 14. Future Enhancements
+## 13. Future Enhancements
 
 - Swap keyword-overlap retrieval for embeddings-based semantic search
-- Support non-Java languages in the Code Explorer
 - Webhook-based incremental repository sync instead of full re-sync
 - Per-policy access control (some policies visible only to certain teams)
 - Streaming Gemini responses in the chat UI
