@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Ask AI - CoreCode</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+<div class="app-shell">
+  <div id="sidebar-root"></div>
+  <main class="main">
+    <div class="page-header">
+      <div>
+        <h1>Ask AI</h1>
+        <p>Ask about company policy, source code, or Git history &mdash; grounded in your actual data.</p>
+      </div>
+    </div>
+
+    <div id="context-row" style="margin-bottom: 12px;"></div>
+
+    <div class="card">
+      <div class="quick-questions" id="quick-questions"></div>
+
+      <div class="chat-window" id="chat-window">
+        <div class="empty-state" id="chat-empty">
+          Ask a question below to get started. Try one of the quick questions above.
+        </div>
+      </div>
+
+      <form id="ask-form" class="chat-input-row">
+        <textarea id="question-input" placeholder="e.g. What is the current password requirement?" required></textarea>
+        <button type="submit" class="btn btn-primary" id="ask-btn">Ask</button>
+      </form>
+    </div>
+  </main>
+</div>
+
+<script src="js/api.js"></script>
+<script src="js/common.js"></script>
+<script>
+  Auth.requireAuth();
+  renderSidebar("assistant");
+
+  const params = new URLSearchParams(window.location.search);
+  let repoId = params.get("repoId") ? Number(params.get("repoId")) : null;
+  let filePath = params.get("filePath") || null;
+
+  renderContextRow();
+
+  function renderContextRow() {
+    const row = document.getElementById("context-row");
+    if (!repoId || !filePath) { row.innerHTML = ""; return; }
+    row.innerHTML = `
+      <span class="context-chip">
+        Context: ${escapeHtml(filePath)}
+        <button onclick="clearContext()" title="Remove context">&times;</button>
+      </span>
+    `;
+  }
+
+  function clearContext() {
+    repoId = null;
+    filePath = null;
+    renderContextRow();
+  }
+
+  const quickQuestions = [
+    { label: "Ask About Policy", text: "What is the current password requirement?" },
+    { label: "Explain Code", text: "What does this method do?" },
+    { label: "Why Was This Changed?", text: "Why was this code changed?" },
+    { label: "MFA requirement", text: "What is the current MFA requirement?" },
+    { label: "Can I use personal GitHub?", text: "Can I upload company code to my personal GitHub?" }
+  ];
+  document.getElementById("quick-questions").innerHTML = quickQuestions.map((q, i) => `
+    <button type="button" class="btn btn-sm" onclick="useQuickQuestion(${i})">${q.label}</button>
+  `).join("");
+
+  function useQuickQuestion(i) {
+    document.getElementById("question-input").value = quickQuestions[i].text;
+  }
+
+  document.getElementById("ask-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const input = document.getElementById("question-input");
+    const question = input.value.trim();
+    if (!question) return;
+
+    document.getElementById("chat-empty").remove?.();
+    appendMessage("user", question);
+    input.value = "";
+
+    const btn = document.getElementById("ask-btn");
+    btn.disabled = true;
+    const thinkingId = appendMessage("assistant", null, true);
+
+    try {
+      const result = await Api.ask(question, repoId, null);
+      updateMessage(thinkingId, result.answer, result.sources, result.questionType);
+    } catch (err) {
+      updateMessage(thinkingId, err.message || "Something went wrong while contacting the assistant.", [], null);
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  let msgCounter = 0;
+  function appendMessage(role, text, thinking = false) {
+    const id = "msg-" + (msgCounter++);
+    const win = document.getElementById("chat-window");
+    const wrapper = document.createElement("div");
+    wrapper.className = "chat-msg " + role;
+    wrapper.id = id;
+
+    if (thinking) {
+      wrapper.innerHTML = `<div class="chat-bubble"><div class="loading-inline"><div class="spinner"></div> Thinking...</div></div>`;
+    } else {
+      wrapper.innerHTML = `<div class="chat-bubble">${escapeHtml(text)}</div>`;
+    }
+    win.appendChild(wrapper);
+    win.scrollTop = win.scrollHeight;
+    return id;
+  }
+
+  function updateMessage(id, answer, sources, questionType) {
+    const el = document.getElementById(id);
+    const typeLabel = questionType ? `<span class="badge badge-type" style="margin-bottom:8px;display:inline-block;">${questionType}</span><br>` : "";
+    let html = `<div class="chat-bubble">${typeLabel}${escapeHtml(answer)}</div>`;
+
+    html += `<div class="evidence-box"><div class="evidence-title">Evidence</div>`;
+    if (sources && sources.length) {
+      html += sources.map(s => `
+        <div class="evidence-item"><span class="badge badge-type">${s.sourceType}</span> ${escapeHtml(s.sourceLabel)}</div>
+      `).join("");
+    } else {
+      html += `<div class="evidence-item">No relevant source found.</div>`;
+    }
+    html += `</div>`;
+
+    el.innerHTML = html;
+    const win = document.getElementById("chat-window");
+    win.scrollTop = win.scrollHeight;
+  }
+</script>
+</body>
+</html>
+

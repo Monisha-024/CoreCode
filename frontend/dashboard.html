@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Dashboard - CoreCode</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+<div class="app-shell">
+  <div id="sidebar-root"></div>
+  <main class="main">
+    <div class="page-header">
+      <div>
+        <h1 id="page-title">Dashboard</h1>
+        <p id="page-subtitle">Welcome back.</p>
+      </div>
+    </div>
+
+    <div class="stat-grid" id="stat-grid"></div>
+
+    <div id="admin-panels" class="hidden">
+      <div class="card">
+        <div class="card-header">
+          <h2>Policies</h2>
+          <a href="policies.html" class="btn btn-sm">Manage policies</a>
+        </div>
+        <table>
+          <thead><tr><th>Policy</th><th>Current Version</th><th>Status</th><th>Effective Date</th></tr></thead>
+          <tbody id="admin-policy-rows"><tr><td colspan="4">Loading...</td></tr></tbody>
+        </table>
+      </div>
+      <div class="card">
+        <div class="card-header">
+          <h2>Repositories</h2>
+          <a href="repositories.html" class="btn btn-sm">Manage repositories</a>
+        </div>
+        <table>
+          <thead><tr><th>Repository</th><th>Owner</th><th>Branch</th></tr></thead>
+          <tbody id="admin-repo-rows"><tr><td colspan="3">Loading...</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div id="dev-panels" class="hidden">
+      <div class="card">
+        <div class="card-header"><h2>Quick actions</h2></div>
+        <div class="quick-questions">
+          <a class="btn btn-primary" href="assistant.html">Ask AI</a>
+          <a class="btn" href="policies.html">Browse Policies</a>
+          <a class="btn" href="repositories.html">Browse Repositories</a>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header"><h2>Active policies</h2></div>
+        <table>
+          <thead><tr><th>Policy</th><th>Version</th><th>Effective Date</th></tr></thead>
+          <tbody id="dev-policy-rows"><tr><td colspan="3">Loading...</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script src="js/api.js"></script>
+<script src="js/common.js"></script>
+<script>
+  Auth.requireAuth();
+  renderSidebar("dashboard");
+
+  const isAdmin = Auth.isAdmin();
+  document.getElementById("page-subtitle").textContent =
+    isAdmin ? "Manage policies, repositories, and monitor assistant usage."
+            : "Ask about company policy, source code, and Git history - all in one place.";
+
+  async function loadDashboard() {
+    try {
+      const policies = await Api.listPolicies();
+      const repos = await Api.listRepositories();
+
+      const statGrid = document.getElementById("stat-grid");
+      const activeCount = policies.filter(p => p.currentVersionStatus === "ACTIVE").length;
+
+      statGrid.innerHTML = `
+        <div class="stat-card"><div class="stat-value">${policies.length}</div><div class="stat-label">Total Policies</div></div>
+        <div class="stat-card"><div class="stat-value">${activeCount}</div><div class="stat-label">Active Policies</div></div>
+        <div class="stat-card"><div class="stat-value">${repos.length}</div><div class="stat-label">Total Repositories</div></div>
+      `;
+
+      if (isAdmin) {
+        document.getElementById("admin-panels").classList.remove("hidden");
+        const policyRows = document.getElementById("admin-policy-rows");
+        policyRows.innerHTML = policies.length ? policies.map(p => `
+          <tr>
+            <td>${escapeHtml(p.name)}</td>
+            <td>${p.currentVersionNumber ? "V" + p.currentVersionNumber : "-"}</td>
+            <td>${badge(p.currentVersionStatus)}</td>
+            <td>${formatDateTime(p.updatedAt)}</td>
+          </tr>
+        `).join("") : `<tr><td colspan="4">No policies yet. <a href="policies.html">Upload one</a>.</td></tr>`;
+
+        const repoRows = document.getElementById("admin-repo-rows");
+        repoRows.innerHTML = repos.length ? repos.map(r => `
+          <tr><td>${escapeHtml(r.owner)}/${escapeHtml(r.name)}</td><td>${escapeHtml(r.owner)}</td><td>${escapeHtml(r.defaultBranch)}</td></tr>
+        `).join("") : `<tr><td colspan="3">No repositories connected yet. <a href="repositories.html">Connect one</a>.</td></tr>`;
+      } else {
+        document.getElementById("dev-panels").classList.remove("hidden");
+        const activePolicies = policies.filter(p => p.currentVersionStatus === "ACTIVE");
+        const rows = document.getElementById("dev-policy-rows");
+        rows.innerHTML = activePolicies.length ? activePolicies.map(p => `
+          <tr><td>${escapeHtml(p.name)}</td><td>V${p.currentVersionNumber}</td><td>${formatDateTime(p.updatedAt)}</td></tr>
+        `).join("") : `<tr><td colspan="3">No active policies yet.</td></tr>`;
+      }
+    } catch (err) {
+      alert(err.message || "Failed to load dashboard data");
+    }
+  }
+
+  function badge(status) {
+    if (status === "ACTIVE") return '<span class="badge badge-active">ACTIVE</span>';
+    if (status === "ARCHIVED") return '<span class="badge badge-archived">ARCHIVED</span>';
+    return "-";
+  }
+
+  loadDashboard();
+</script>
+</body>
+</html>
+

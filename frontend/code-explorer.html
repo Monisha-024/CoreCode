@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Code Explorer - CoreCode</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+<div class="app-shell">
+  <div id="sidebar-root"></div>
+  <main class="main">
+    <div class="page-header">
+      <div>
+        <h1>Code Explorer</h1>
+        <p id="repo-label">Select a repository to browse its source files.</p>
+      </div>
+      <a href="repositories.html" class="btn">&larr; Repositories</a>
+    </div>
+
+    <div id="alert-box" class="alert hidden"></div>
+
+    <div class="explorer-layout">
+      <div class="card file-tree" id="file-tree">
+        <div class="empty-state">Loading files...</div>
+      </div>
+
+      <div>
+        <div class="card" id="file-card" style="display:none;">
+          <div class="card-header">
+            <h2 id="file-title">File</h2>
+            <span class="badge badge-type" id="file-language"></span>
+          </div>
+          <div class="code-viewer" id="code-viewer"></div>
+          <div class="code-actions">
+            <button class="btn btn-primary" id="explain-btn">Explain Code</button>
+            <button class="btn" id="why-changed-btn">Why Was This Changed?</button>
+            <a class="btn" id="ask-about-btn" href="#">Ask About Code &rarr;</a>
+          </div>
+        </div>
+
+        <div class="card" id="commits-card" style="display:none;">
+          <div class="card-header"><h2>Commit History for this file</h2></div>
+          <table>
+            <thead><tr><th>Commit</th><th>Message</th><th>Author</th><th>Date</th></tr></thead>
+            <tbody id="commit-rows"></tbody>
+          </table>
+        </div>
+
+        <div class="card hidden" id="quick-answer-card">
+          <div class="card-header"><h2 id="quick-answer-title">Answer</h2></div>
+          <div class="chat-bubble" id="quick-answer-text" style="background:#f1f3f8;"></div>
+          <div class="evidence-box" id="quick-answer-evidence" style="margin-top:10px;"></div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script src="js/api.js"></script>
+<script src="js/common.js"></script>
+<script>
+  Auth.requireAuth();
+  renderSidebar("code-explorer");
+
+  const params = new URLSearchParams(window.location.search);
+  const repoId = params.get("repoId");
+  let selectedFile = null;
+
+  if (!repoId) {
+    document.getElementById("file-tree").innerHTML = `<div class="empty-state">No repository selected.<br><a href="repositories.html">Go to Repositories</a></div>`;
+  } else {
+    loadFiles();
+  }
+
+  async function loadFiles() {
+    try {
+      const repos = await Api.listRepositories();
+      const repo = repos.find(r => String(r.id) === String(repoId));
+      if (repo) document.getElementById("repo-label").textContent = repo.owner + "/" + repo.name + " (" + repo.defaultBranch + ")";
+
+      const files = await Api.listFiles(repoId);
+      const tree = document.getElementById("file-tree");
+      if (!files.length) {
+        tree.innerHTML = `<div class="empty-state">No supported source files indexed yet for this repository.</div>`;
+        return;
+      }
+      tree.innerHTML = files.map(f => `
+        <div class="file-tree-item" data-path="${escapeHtml(f.filePath)}">${escapeHtml(f.filePath)}</div>
+      `).join("");
+
+      tree.querySelectorAll(".file-tree-item").forEach(el => {
+        el.addEventListener("click", () => selectFile(el.dataset.path, tree));
+      });
+    } catch (err) {
+      showAlert("alert-box", err.message || "Failed to load files");
+    }
+  }
+
+  async function selectFile(path, tree) {
+    selectedFile = path;
+    tree.querySelectorAll(".file-tree-item").forEach(el => el.classList.toggle("active", el.dataset.path === path));
+    document.getElementById("quick-answer-card").classList.add("hidden");
+
+    try {
+      const file = await Api.getFileContent(repoId, path);
+      document.getElementById("file-card").style.display = "block";
+      document.getElementById("file-title").textContent = file.filePath;
+      document.getElementById("file-language").textContent = file.language || "";
+      document.getElementById("code-viewer").textContent = file.content;
+      document.getElementById("ask-about-btn").href = "assistant.html?repoId=" + repoId + "&filePath=" + encodeURIComponent(path);
+
+      const commits = await Api.listCommits(repoId, path);
+      const commitsCard = document.getElementById("commits-card");
+      if (commits.length) {
+        commitsCard.style.display = "block";
+        document.getElementById("commit-rows").innerHTML = commits.map(c => `
+          <tr>
+            <td><code>${c.commitHash.substring(0, 7)}</code></td>
+            <td>${escapeHtml(c.message)}</td>
+            <td>${escapeHtml(c.author)}</td>
+            <td>${formatDateTime(c.commitDate)}</td>
+          </tr>
+        `).join("");
+      } else {
+        commitsCard.style.display = "none";
+      }
+    } catch (err) {
+      showAlert("alert-box", err.message || "Failed to load file");
+    }
+  }
+
+  document.getElementById("explain-btn").addEventListener("click", () => askQuickQuestion("Explain what this code does."));
+  document.getElementById("why-changed-btn").addEventListener("click", () => askQuickQuestion("Why was this code changed?"));
+
+  async function askQuickQuestion(question) {
+    if (!selectedFile) return;
+    const card = document.getElementById("quick-answer-card");
+    card.classList.remove("hidden");
+    document.getElementById("quick-answer-title").textContent = question;
+    document.getElementById("quick-answer-text").innerHTML = `<div class="loading-inline"><div class="spinner"></div> Thinking...</div>`;
+    document.getElementById("quick-answer-evidence").innerHTML = "";
+    card.scrollIntoView({ behavior: "smooth" });
+
+    try {
+      const result = await Api.ask(question, repoId, selectedFile);
+      document.getElementById("quick-answer-text").textContent = result.answer;
+      renderEvidence("quick-answer-evidence", result.sources);
+    } catch (err) {
+      document.getElementById("quick-answer-text").textContent = err.message || "The assistant could not answer this question.";
+    }
+  }
+
+  function renderEvidence(containerId, sources) {
+    const el = document.getElementById(containerId);
+    if (!sources || !sources.length) {
+      el.innerHTML = `<div class="evidence-title">Evidence</div><div class="evidence-item">No relevant source found.</div>`;
+      return;
+    }
+    el.innerHTML = `<div class="evidence-title">Evidence</div>` + sources.map(s => `
+      <div class="evidence-item"><span class="badge badge-type">${s.sourceType}</span> ${escapeHtml(s.sourceLabel)}</div>
+    `).join("");
+  }
+</script>
+</body>
+</html>
+

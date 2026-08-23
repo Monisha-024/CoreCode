@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Policy Details - CoreCode</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+<div class="app-shell">
+  <div id="sidebar-root"></div>
+  <main class="main">
+    <div class="page-header">
+      <div>
+        <h1 id="policy-name">Policy</h1>
+        <p id="policy-description"></p>
+      </div>
+      <a href="policies.html" class="btn">&larr; Back to Policies</a>
+    </div>
+
+    <div id="alert-box" class="alert hidden"></div>
+
+    <div class="card hidden" id="upload-card">
+      <div class="card-header"><h2>Upload New Version (PDF)</h2></div>
+      <form id="upload-form">
+        <div class="form-row">
+          <div class="form-group">
+            <label for="pdf-file">PDF file</label>
+            <input type="file" id="pdf-file" accept="application/pdf" required>
+          </div>
+          <div class="form-group">
+            <label for="effective-date">Effective date</label>
+            <input type="date" id="effective-date">
+          </div>
+        </div>
+        <button type="submit" class="btn btn-primary" id="upload-btn">Upload Version</button>
+        <div class="help-text">The PDF text is extracted automatically and split into searchable chunks. The first version uploaded becomes ACTIVE automatically.</div>
+      </form>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <h2>Versions</h2>
+        <button class="btn btn-sm hidden" id="show-upload-btn">+ Upload Version</button>
+      </div>
+      <table>
+        <thead><tr><th>Version</th><th>Status</th><th>Effective Date</th><th>File</th><th>Actions</th></tr></thead>
+        <tbody id="version-rows"><tr><td colspan="5">Loading...</td></tr></tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <div class="card-header"><h2>Compare Versions</h2></div>
+      <div class="form-row">
+        <div class="form-group">
+          <label for="compare-from">From version</label>
+          <select id="compare-from"></select>
+        </div>
+        <div class="form-group">
+          <label for="compare-to">To version</label>
+          <select id="compare-to"></select>
+        </div>
+      </div>
+      <button class="btn" id="compare-btn">Compare</button>
+      <div id="compare-result" style="margin-top:16px;"></div>
+    </div>
+
+    <div class="card" id="content-card" style="display:none;">
+      <div class="card-header"><h2 id="content-title">Version Content</h2></div>
+      <div class="code-viewer" id="version-content"></div>
+    </div>
+  </main>
+</div>
+
+<script src="js/api.js"></script>
+<script src="js/common.js"></script>
+<script>
+  Auth.requireAuth();
+  renderSidebar("policies");
+
+  const params = new URLSearchParams(window.location.search);
+  const policyId = params.get("id");
+  const isAdmin = Auth.isAdmin();
+
+  if (!policyId) window.location.href = "policies.html";
+
+  if (isAdmin) {
+    document.getElementById("show-upload-btn").classList.remove("hidden");
+  }
+  document.getElementById("show-upload-btn").addEventListener("click", () => {
+    document.getElementById("upload-card").classList.toggle("hidden");
+  });
+
+  document.getElementById("upload-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const btn = document.getElementById("upload-btn");
+    btn.disabled = true;
+    btn.textContent = "Uploading & extracting text...";
+    try {
+      const file = document.getElementById("pdf-file").files[0];
+      const effectiveDate = document.getElementById("effective-date").value;
+      await Api.uploadVersion(policyId, file, effectiveDate);
+      showAlert("alert-box", "Version uploaded and text extracted successfully.", "success");
+      document.getElementById("upload-card").classList.add("hidden");
+      document.getElementById("upload-form").reset();
+      loadPolicy();
+    } catch (err) {
+      showAlert("alert-box", err.message || "Upload failed");
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "Upload Version";
+    }
+  });
+
+  async function loadPolicy() {
+    try {
+      const policy = await Api.getPolicy(policyId);
+      document.getElementById("policy-name").textContent = policy.name;
+      document.getElementById("policy-description").textContent = policy.description || "";
+
+      const versions = await Api.listVersions(policyId);
+      const rows = document.getElementById("version-rows");
+      rows.innerHTML = versions.length ? versions.map(v => `
+        <tr>
+          <td>V${v.versionNumber}</td>
+          <td>${badge(v.status)}</td>
+          <td>${v.effectiveDate || "-"}</td>
+          <td>${escapeHtml(v.fileName || "-")}</td>
+          <td>
+            <button class="btn btn-sm" onclick="viewContent(${v.versionNumber}, ${JSON.stringify(v.content).replace(/"/g, '&quot;')})">View</button>
+            ${isAdmin && v.status !== "ACTIVE" ? `<button class="btn btn-sm btn-primary" onclick="activate(${v.versionNumber})">Activate</button>` : ""}
+          </td>
+        </tr>
+      `).join("") : `<tr><td colspan="5"><div class="empty-state">No versions uploaded yet.</div></td></tr>`;
+
+      const selects = [document.getElementById("compare-from"), document.getElementById("compare-to")];
+      selects.forEach(sel => {
+        sel.innerHTML = versions.map(v => `<option value="${v.versionNumber}">V${v.versionNumber} (${v.status})</option>`).join("");
+      });
+      if (versions.length >= 2) {
+        selects[0].value = versions[versions.length - 1].versionNumber;
+        selects[1].value = versions[0].versionNumber;
+      }
+    } catch (err) {
+      showAlert("alert-box", err.message || "Failed to load policy");
+    }
+  }
+
+  async function activate(versionNumber) {
+    if (!confirm("Activate V" + versionNumber + "? The currently active version will be archived.")) return;
+    try {
+      await Api.activateVersion(policyId, versionNumber);
+      showAlert("alert-box", "V" + versionNumber + " is now ACTIVE.", "success");
+      loadPolicy();
+    } catch (err) {
+      showAlert("alert-box", err.message || "Failed to activate version");
+    }
+  }
+
+  function viewContent(versionNumber, content) {
+    document.getElementById("content-card").style.display = "block";
+    document.getElementById("content-title").textContent = "Version " + versionNumber + " Content";
+    document.getElementById("version-content").textContent = content;
+    document.getElementById("content-card").scrollIntoView({ behavior: "smooth" });
+  }
+
+  document.getElementById("compare-btn").addEventListener("click", async () => {
+    const from = document.getElementById("compare-from").value;
+    const to = document.getElementById("compare-to").value;
+    const resultEl = document.getElementById("compare-result");
+    resultEl.innerHTML = `<div class="loading-inline"><div class="spinner"></div> Comparing...</div>`;
+    try {
+      const result = await Api.compareVersions(policyId, from, to);
+      let html = `<p><strong>${result.unchangedSummaryNote[0]}</strong></p>`;
+      if (result.addedLines.length) {
+        html += `<div class="evidence-box"><div class="evidence-title">Added in V${result.toVersion}</div>` +
+          result.addedLines.map(l => `<div class="evidence-item" style="color:var(--color-success)">+ ${escapeHtml(l)}</div>`).join("") + `</div>`;
+      }
+      if (result.removedLines.length) {
+        html += `<div class="evidence-box" style="margin-top:10px;"><div class="evidence-title">Removed from V${result.fromVersion}</div>` +
+          result.removedLines.map(l => `<div class="evidence-item" style="color:var(--color-danger)">- ${escapeHtml(l)}</div>`).join("") + `</div>`;
+      }
+      resultEl.innerHTML = html;
+    } catch (err) {
+      resultEl.innerHTML = `<div class="alert alert-error">${escapeHtml(err.message || "Comparison failed")}</div>`;
+    }
+  });
+
+  function badge(status) {
+    if (status === "ACTIVE") return '<span class="badge badge-active">ACTIVE</span>';
+    if (status === "ARCHIVED") return '<span class="badge badge-archived">ARCHIVED</span>';
+    return "-";
+  }
+
+  loadPolicy();
+</script>
+</body>
+</html>
+

@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Repositories - CoreCode</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+<div class="app-shell">
+  <div id="sidebar-root"></div>
+  <main class="main">
+    <div class="page-header">
+      <div>
+        <h1>Repositories</h1>
+        <p>Connect a GitHub repository to enable code and Git-history questions.</p>
+      </div>
+      <button id="new-repo-btn" class="btn btn-primary hidden">+ Connect Repository</button>
+    </div>
+
+    <div id="alert-box" class="alert hidden"></div>
+
+    <div class="card hidden" id="new-repo-form-card">
+      <div class="card-header"><h2>Connect a GitHub repository</h2></div>
+      <form id="new-repo-form">
+        <div class="form-row">
+          <div class="form-group">
+            <label for="repo-owner">Owner / organization</label>
+            <input type="text" id="repo-owner" required placeholder="e.g. octocat">
+          </div>
+          <div class="form-group">
+            <label for="repo-name">Repository name</label>
+            <input type="text" id="repo-name" required placeholder="e.g. sample-payments-service">
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="repo-branch">Branch (optional)</label>
+          <input type="text" id="repo-branch" placeholder="Defaults to the repo's default branch">
+        </div>
+        <button type="submit" class="btn btn-primary" id="connect-btn">Connect</button>
+        <div class="help-text">Requires GITHUB_TOKEN to be configured on the backend. Supported file types for the Code Explorer: .java, .py, .js, .jsx, .ts, .tsx</div>
+      </form>
+    </div>
+
+    <div class="card">
+      <div class="card-header"><h2>Connected Repositories</h2></div>
+      <table>
+        <thead><tr><th>Repository</th><th>Owner</th><th>Branch</th><th>Connected</th><th>Actions</th></tr></thead>
+        <tbody id="repo-rows"><tr><td colspan="5">Loading...</td></tr></tbody>
+      </table>
+    </div>
+  </main>
+</div>
+
+<script src="js/api.js"></script>
+<script src="js/common.js"></script>
+<script>
+  Auth.requireAuth();
+  renderSidebar("repositories");
+
+  const isAdmin = Auth.isAdmin();
+  if (isAdmin) document.getElementById("new-repo-btn").classList.remove("hidden");
+
+  document.getElementById("new-repo-btn").addEventListener("click", () => {
+    document.getElementById("new-repo-form-card").classList.remove("hidden");
+  });
+
+  document.getElementById("new-repo-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const btn = document.getElementById("connect-btn");
+    btn.disabled = true;
+    btn.textContent = "Connecting & syncing (this can take a moment)...";
+    try {
+      const owner = document.getElementById("repo-owner").value.trim();
+      const name = document.getElementById("repo-name").value.trim();
+      const branch = document.getElementById("repo-branch").value.trim();
+      await Api.connectRepository(owner, name, branch || null);
+      showAlert("alert-box", "Repository connected. Files and commit history have been synced from GitHub.", "success");
+      document.getElementById("new-repo-form-card").classList.add("hidden");
+      document.getElementById("new-repo-form").reset();
+      loadRepos();
+    } catch (err) {
+      showAlert("alert-box", err.message || "Failed to connect repository");
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "Connect";
+    }
+  });
+
+  async function loadRepos() {
+    try {
+      const repos = await Api.listRepositories();
+      const rows = document.getElementById("repo-rows");
+      rows.innerHTML = repos.length ? repos.map(r => `
+        <tr>
+          <td>${escapeHtml(r.owner)}/${escapeHtml(r.name)}</td>
+          <td>${escapeHtml(r.owner)}</td>
+          <td>${escapeHtml(r.defaultBranch)}</td>
+          <td>${formatDateTime(r.createdAt)}</td>
+          <td>
+            <a class="btn btn-sm" href="code-explorer.html?repoId=${r.id}">Browse Code</a>
+            <a class="btn btn-sm" href="${r.githubUrl}" target="_blank" rel="noopener">GitHub &#8599;</a>
+          </td>
+        </tr>
+      `).join("") : `<tr><td colspan="5"><div class="empty-state">No repositories connected yet.</div></td></tr>`;
+    } catch (err) {
+      showAlert("alert-box", err.message || "Failed to load repositories");
+    }
+  }
+
+  loadRepos();
+</script>
+</body>
+</html>
+

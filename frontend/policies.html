@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Policies - CoreCode</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+<div class="app-shell">
+  <div id="sidebar-root"></div>
+  <main class="main">
+    <div class="page-header">
+      <div>
+        <h1>Policies</h1>
+        <p>Company policies and their version history.</p>
+      </div>
+      <button id="new-policy-btn" class="btn btn-primary hidden">+ New Policy</button>
+    </div>
+
+    <div id="alert-box" class="alert hidden"></div>
+
+    <div class="card hidden" id="new-policy-form-card">
+      <div class="card-header"><h2>Create a new policy</h2></div>
+      <form id="new-policy-form">
+        <div class="form-group">
+          <label for="policy-name">Policy name</label>
+          <input type="text" id="policy-name" required placeholder="e.g. Information Security Policy">
+        </div>
+        <div class="form-group">
+          <label for="policy-description">Description</label>
+          <textarea id="policy-description" rows="2" placeholder="Short description of what this policy covers"></textarea>
+        </div>
+        <div class="form-row">
+          <button type="submit" class="btn btn-primary">Create Policy</button>
+          <button type="button" class="btn" id="cancel-new-policy">Cancel</button>
+        </div>
+      </form>
+    </div>
+
+    <div class="card">
+      <div class="card-header"><h2>All Policies</h2></div>
+      <table>
+        <thead>
+          <tr><th>Policy</th><th>Current Version</th><th>Status</th><th>Effective Date</th><th>Actions</th></tr>
+        </thead>
+        <tbody id="policy-rows"><tr><td colspan="5">Loading...</td></tr></tbody>
+      </table>
+    </div>
+  </main>
+</div>
+
+<script src="js/api.js"></script>
+<script src="js/common.js"></script>
+<script>
+  Auth.requireAuth();
+  renderSidebar("policies");
+
+  const isAdmin = Auth.isAdmin();
+  if (isAdmin) {
+    document.getElementById("new-policy-btn").classList.remove("hidden");
+  }
+
+  document.getElementById("new-policy-btn").addEventListener("click", () => {
+    document.getElementById("new-policy-form-card").classList.remove("hidden");
+  });
+  document.getElementById("cancel-new-policy").addEventListener("click", () => {
+    document.getElementById("new-policy-form-card").classList.add("hidden");
+  });
+
+  document.getElementById("new-policy-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    try {
+      const name = document.getElementById("policy-name").value.trim();
+      const description = document.getElementById("policy-description").value.trim();
+      await Api.createPolicy(name, description);
+      document.getElementById("new-policy-form-card").classList.add("hidden");
+      document.getElementById("new-policy-form").reset();
+      showAlert("alert-box", "Policy created. Upload a PDF version to add content.", "success");
+      loadPolicies();
+    } catch (err) {
+      showAlert("alert-box", err.message || "Could not create policy");
+    }
+  });
+
+  async function loadPolicies() {
+    try {
+      const policies = await Api.listPolicies();
+      const rows = document.getElementById("policy-rows");
+      if (!policies.length) {
+        rows.innerHTML = `<tr><td colspan="5"><div class="empty-state">No policies yet.</div></td></tr>`;
+        return;
+      }
+      rows.innerHTML = policies.map(p => `
+        <tr>
+          <td><a href="policy-details.html?id=${p.id}">${escapeHtml(p.name)}</a><br>
+              <span class="help-text">${escapeHtml(p.description || "")}</span></td>
+          <td>${p.currentVersionNumber ? "V" + p.currentVersionNumber : "-"}</td>
+          <td>${badge(p.currentVersionStatus)}</td>
+          <td>${formatDateTime(p.updatedAt)}</td>
+          <td>
+            <a class="btn btn-sm" href="policy-details.html?id=${p.id}">View</a>
+            ${isAdmin ? `<button class="btn btn-sm btn-danger" onclick="deletePolicy(${p.id})">Delete</button>` : ""}
+          </td>
+        </tr>
+      `).join("");
+    } catch (err) {
+      showAlert("alert-box", err.message || "Failed to load policies");
+    }
+  }
+
+  async function deletePolicy(id) {
+    if (!confirm("Delete this policy and all its versions? This cannot be undone.")) return;
+    try {
+      await Api.deletePolicy(id);
+      loadPolicies();
+    } catch (err) {
+      showAlert("alert-box", err.message || "Failed to delete policy");
+    }
+  }
+
+  function badge(status) {
+    if (status === "ACTIVE") return '<span class="badge badge-active">ACTIVE</span>';
+    if (status === "ARCHIVED") return '<span class="badge badge-archived">ARCHIVED</span>';
+    return "-";
+  }
+
+  loadPolicies();
+</script>
+</body>
+</html>
+

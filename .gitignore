@@ -1,0 +1,25 @@
+# Environment / secrets
+.env
+
+# Maven
+backend/target/
+*.class
+
+# Uploaded files
+uploads/*
+!uploads/.gitkeep
+
+# IDE
+.idea/
+*.iml
+.vscode/
+.settings/
+.classpath
+.project
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
