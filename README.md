@@ -33,7 +33,7 @@ and commit history, that:
   policy; old versions are ARCHIVED automatically)
 - Real PDF text extraction (Apache PDFBox) → chunked → stored in MySQL
 - Simple keyword-overlap **RAG retrieval** (no vector DB required)
-- Real GitHub REST API integration: file tree, Java source, commit history
+- Real GitHub REST API integration: file tree, source code, and commit history
 - Code Explorer with **Explain Code** / **Why Was This Changed?** actions
 - **Combined Policy + Code + Git** answers — the project's signature feature
 - Every AI answer displays its evidence (policy section, file, or commit)
@@ -304,3 +304,4 @@ CoreCode/
 - Webhook-based incremental repository sync instead of full re-sync
 - Per-policy access control (some policies visible only to certain teams)
 - Streaming Gemini responses in the chat UI
+- Improved semantic code retrieval for large repositories
